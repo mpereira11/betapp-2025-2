@@ -2,9 +2,9 @@ import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'reac
 
 export default function App() {
   return (
-    <View
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      {/* Franjas decorativas */}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: 80, backgroundColor: '#F8C61E', opacity: 1 }} />
       <Image
         source={require('../assets/images/logo-bet-app.png')}
         style={styles.image}
@@ -19,7 +19,7 @@ export default function App() {
       />
 
       <Text
-        style={styles.forgot}
+        style={styles.forgot_text}
       >
         Forgot Password?
       </Text>
@@ -27,17 +27,43 @@ export default function App() {
       <TouchableOpacity 
         style={styles.button} onPress={() => {}}>
       <Text
-      style={{color: '#252C37', fontWeight: 'bold', fontSize: 16}}>
+      style={styles.text_button}>
         Login
       </Text>
       </TouchableOpacity>
-    
 
+      <Text
+        style={styles.media_text}
+      >
+        Or by social media
+      </Text>
+      <View style={styles.icon_row}>
+        <Image source={require('../assets/images/facebook-icon.png')} style={styles.icon} />
+        <Image source={require('../assets/images/google-icon.png')} style={styles.icon} />
+        <Image source={require('../assets/images/X-icon.png')} style={styles.icon} />
+      </View>
+
+      <Text style={styles.signup_text}>
+        Don't have an account? <Text style={{ color: '#F8C61E' }}>Sign up</Text>
+      </Text>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  icon: {
+    width: 32,
+    height: 32,
+    tintColor: '#F8C61E',
+    marginBottom: 20,
+  },
+  icon_row: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    gap: 20,
+  },
   container: {
     flex: 1,
     justifyContent: 'center',
@@ -49,7 +75,7 @@ const styles = StyleSheet.create({
     fontSize: 24
   },
   input: {
-    height: 40,
+    height: 45,
     width: 220,
     borderColor: '#F8C61E',
     backgroundColor: '#3A3F47',
@@ -59,7 +85,7 @@ const styles = StyleSheet.create({
     marginVertical: 10,
     color: '#ffffffff',
   },
-  forgot: {
+  forgot_text: {
     color: '#d7d7d7ff',
     fontSize: 10,
     marginTop: 3,
@@ -67,17 +93,34 @@ const styles = StyleSheet.create({
     marginRight: 95,
     textDecorationLine: 'underline',
   },
+  media_text: {
+    color: '#d7d7d7ff',
+    fontSize: 10,
+    marginTop: 40,
+  },
   button: {
     backgroundColor: '#F8C61E',
     borderRadius: 25,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    marginTop: 30,
+    marginTop: 40,
+    width: 130,
   },
   image: {
     width: 120,
     height: 120,
-    marginBottom: 20
+    marginBottom: 25
+  },
+  text_button: {
+    color: '#252C37',
+    fontWeight: 'bold',
+    fontSize: 16,
+    textAlign: 'center'
+  },
+  signup_text: {
+    color: '#d7d7d7ff',
+    fontSize: 10,
+    marginTop: 50,
   }
 });
 
