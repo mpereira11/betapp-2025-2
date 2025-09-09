@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function LoginScreen() {
@@ -5,7 +6,7 @@ export default function LoginScreen() {
     <View style={styles.container}>
 
       <Image
-  source={require('../../assets/images/logo-bet-app.png')}
+        source={require('../../assets/images/logo-bet-app.png')}
         style={styles.image}
       />
       <TextInput
@@ -15,10 +16,13 @@ export default function LoginScreen() {
       <TextInput
         style={styles.input}
         placeholder="Password..."
+        secureTextEntry
       />
 
       <View style={styles.inputContainer}>
-        <Text style={styles.forgot_text}>Forgot Password?</Text>
+        <Link href="/(auth)/reset" asChild>
+          <Text style={styles.forgot_text}>Forgot Password?</Text>
+        </Link>
       </View>
 
       <TouchableOpacity 
@@ -41,15 +45,16 @@ export default function LoginScreen() {
       </View>
 
       <Text style={styles.signup_text}>
-        Don't have an account? <Text style={{ color: '#F8C61E' }}>Sign up</Text>
+        Don't have an account?{' '}
+        <Link href="/(auth)/register" asChild>
+          <Text style={{ color: '#F8C61E', textDecorationLine: 'underline' }}>Sign up</Text>
+        </Link>
       </Text>
 
     </View>
   )
 }
 
-// <Link>
-// Router.navigator
 const styles = StyleSheet.create({
   inputContainer: {
     width: 250,
@@ -102,12 +107,15 @@ const styles = StyleSheet.create({
     marginTop: 40,
   },
   button: {
-    backgroundColor: '#F8C61E',
-    borderRadius: 25,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    marginTop: 40,
-    width: 150,
+  backgroundColor: '#F8C61E',
+  borderRadius: 25,
+  paddingVertical: 18,
+  paddingHorizontal: 32,
+  marginTop: 40,
+  shadowColor: '#FdD700',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.5,
+  shadowRadius: 5,
   },
   image: {
     width: 144,
