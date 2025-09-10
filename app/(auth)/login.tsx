@@ -1,7 +1,8 @@
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function LoginScreen() {
+  const router = useRouter();
   return (
     <View style={styles.container}>
 
@@ -26,11 +27,11 @@ export default function LoginScreen() {
       </View>
 
       <TouchableOpacity 
-        style={styles.button} onPress={() => {}}>
-      <Text
-      style={styles.text_button}>
-        Login
-      </Text>
+        style={styles.button} onPress={() => router.push('/main/(tabs)/home')}>
+        <Text
+          style={styles.text_button}>
+          Login
+        </Text>
       </TouchableOpacity>
 
       <Text
