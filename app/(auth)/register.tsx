@@ -1,53 +1,72 @@
+import { AuthContext } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
+import { useContext, useState } from 'react';
 import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+
 
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { register, isLoading } = useContext(AuthContext);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [confirmationMsg, setConfirmationMsg] = useState('');
+
+  const handleRegister = async () => {
+    setError('');
+    setConfirmationMsg('');
+    try {
+      await register(email, password);
+      setConfirmationMsg('Registro exitoso. Revisa tu correo para confirmar tu cuenta antes de iniciar sesión.');
+      setEmail('');
+      setPassword('');
+    } catch (err: any) {
+      setError(err.message || 'No se pudo registrar');
+    }
+  };
+
   return (
     <View style={styles.container}>
-
-       <Image
-          source={require('../../assets/images/logo-bet-app.png')}
-          style={styles.image}
-        />
-
+      <Image
+        source={require('../../assets/images/logo-bet-app.png')}
+        style={styles.image}
+      />
       <Text style={styles.title}>Create Account</Text>
-
       <TextInput
-              style={styles.input}
-              placeholder="Email..."
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Password..."
-              secureTextEntry
-            />
-
-  
-       <TouchableOpacity 
-              style={styles.button} onPress={() => {}}>
-            <Text
-            style={styles.text_button}>
-              Sign Up
-            </Text>
-            </TouchableOpacity>
-
-      
-
+        style={styles.input}
+        placeholder="Email..."
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        keyboardType="email-address"
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password..."
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+      />
+  {!!error && <Text style={{ color: 'red', marginBottom: 8 }}>{error}</Text>}
+  {!!confirmationMsg && <Text style={{ color: 'green', marginBottom: 8 }}>{confirmationMsg}</Text>}
+      <TouchableOpacity 
+        style={styles.button} onPress={handleRegister} disabled={isLoading}>
+        <Text style={styles.text_button}>
+          {isLoading ? 'Loading...' : 'Sign Up'}
+        </Text>
+      </TouchableOpacity>
       <View style={styles.icon_row}>
         <Image source={require('../../assets/images/facebook-icon.png')} style={styles.icon} />
         <Image source={require('../../assets/images/google-icon.png')} style={styles.icon} />
         <Image source={require('../../assets/images/X-icon.png')} style={styles.icon} />
       </View>
-
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => router.replace('/(auth)/login')}
       >
         <Text style={styles.backButtonText}>Back to Login</Text>
       </TouchableOpacity>
-
     </View>
   );
 }
