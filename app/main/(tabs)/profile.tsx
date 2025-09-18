@@ -2,17 +2,11 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/utils/supabase";
 import Entypo from "@expo/vector-icons/Entypo";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
-import { useContext, useEffect, useState } from "react";
-import {
-  Alert,
-  Modal,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { Alert, Image, Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { styles } from "./profile.styles";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -21,10 +15,18 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  // Modal
+  // Modal edición
   const [modalVisible, setModalVisible] = useState(false);
   const [editName, setEditName] = useState("");
   const [editUsername, setEditUsername] = useState("");
+
+  // Camera / avatar
+  const [facing, setFacing] = useState<CameraType>("back");
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<any>(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [isCameraReady, setIsCameraReady] = useState(false);
 
   // Cargar perfil desde Supabase
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function ProfileScreen() {
       setLoading(true);
       const { data, error } = await supabase
         .from("profiles")
-        .select("name, username, email")
+        .select("name, username, email, avatar_url")
         .eq("id", user.id)
         .single();
 
@@ -41,13 +43,108 @@ export default function ProfileScreen() {
         setProfile(data);
         setEditName(data.name || "");
         setEditUsername(data.username || "");
+        if (data.avatar_url) {
+          setPhotoUri(data.avatar_url);
+        }
       }
       setLoading(false);
     };
     loadProfile();
   }, [user]);
 
-  // Guardar cambios
+  const toggleCameraFacing = () => {
+    setFacing((current) => (current === "back" ? "front" : "back"));
+  };
+
+  // Abre la cámara cuando el usuario pulsa el avatar.
+  const openCamera = async () => {
+    try {
+      // Si el hook aún no ha cargado el estado, pedimos permiso y esperamos.
+      if (!permission || !permission.granted) {
+        const result = await requestPermission();
+        // requestPermission puede retornar PermissionResponse; comprobamos granted.
+        if (!result || !result.granted) {
+          Alert.alert(
+            "Permiso necesario",
+            "Necesitamos permiso para usar la cámara. Por favor habilítalo."
+          );
+          return;
+        }
+      }
+      // Si llegamos aquí, tenemos permiso.
+      setShowCameraModal(true);
+    } catch (err) {
+      console.log("openCamera error:", err);
+      Alert.alert("Error", "No se pudo solicitar permiso de cámara.");
+    }
+  };
+
+  const takePicture = async () => {
+    try {
+      if (!cameraRef.current) {
+        Alert.alert("Cámara", "La cámara aún no está lista.");
+        return;
+      }
+      
+      // Se toma la foto actual y se guarda en la const photo
+      const photo = await cameraRef.current.takePictureAsync?.();
+      if (!photo) {
+        Alert.alert("Error", "No se pudo tomar la foto.");
+        return;
+      }
+
+      // Se guarda la uri de la foto en el estado para mostrarla en el avatar
+      const uri = photo.uri ?? (photo.base64 ? `data:image/jpg;base64,${photo.base64}` : null);
+      if (uri) {
+        setPhotoUri(uri);
+      }
+
+      setShowCameraModal(false);
+
+      // Opcional: subir la foto a Supabase Storage y guardar la URL en profiles
+      // await uploadAvatarToSupabase(uri);
+    } catch (err) {
+      console.log("takePicture error:", err);
+      Alert.alert("Error", "Ha ocurrido un error al tomar la foto.");
+    }
+  };
+
+  // Ejemplo básico de subida a Supabase (opcional). Ajusta bucket/nombres según tu configuración.
+  // NOTA: la API de supabase storage puede devolver estructuras ligeramente distintas según la versión;
+  // prueba y ajusta (este helper es un punto de partida).
+  const uploadAvatarToSupabase = async (uri: string) => {
+    if (!user) return;
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
+      const filePath = `avatars/${user.id}.${ext}`;
+
+      const { data, error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, blob, { upsert: true });
+
+      if (uploadError) {
+        console.log("uploadError", uploadError);
+        throw uploadError;
+      }
+
+      // Obtener URL pública (estructura puede variar)
+      const { data: publicData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      const publicUrl = (publicData as any)?.publicUrl ?? (publicData as any)?.publicURL ?? null;
+
+      if (publicUrl) {
+        // Actualizar profile
+        await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id);
+        setProfile((p: any) => ({ ...p, avatar_url: publicUrl }));
+      }
+    } catch (err) {
+      console.log("uploadAvatarToSupabase error:", err);
+      Alert.alert("Error", "No se pudo subir la imagen al servidor.");
+    }
+  };
+
+  // Guardar cambios en el modal de perfil
   const handleSave = async () => {
     if (!user) return;
 
@@ -71,35 +168,31 @@ export default function ProfileScreen() {
   return (
     <View style={styles.bgContainer}>
       {/* Logout */}
-      <TouchableOpacity style={styles.logoutIcon} onPress={logout}>
+      <TouchableOpacity style={styles.logoutIcon} onPress={() => router.push('/login')}>
         <Entypo name="log-out" size={25} color="#F8C61E" />
       </TouchableOpacity>
 
-      {/* Avatar */}
-      <View style={styles.avatarCircle}>
-        <FontAwesome size={36} name="user" color="#F8C61E" />
-      </View>
+      {/* Avatar: ahora es TouchableOpacity */}
+      <TouchableOpacity style={styles.avatarCircle} onPress={openCamera} activeOpacity={0.8}>
+        {photoUri ? ( // Si hay una foto guardada se usa su uri para ponerla como imagen, si no, el icono por defecto
+          <Image source={{ uri: photoUri }} style={styles.avatarImage} />
+        ) : (
+          <FontAwesome size={36} name="user" color="#F8C61E" />
+        )}
+      </TouchableOpacity>
+      <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>Toca el avatar para cambiarlo</Text>
 
       {/* Username y nombre */}
-      <Text style={styles.username}>
-        {profile?.username || "Cargando..."}
-      </Text>
-      <Text style={styles.userId}>
-        {profile?.name || ""}
-      </Text>
-      <Text style={styles.userId}>
-        {profile?.email || ""}
-      </Text>
+      <Text style={styles.username}>{profile?.username || "Cargando..."}</Text>
+      <Text style={styles.userId}>{profile?.name || ""}</Text>
+      <Text style={styles.userId}>{profile?.email || ""}</Text>
 
       {/* Botón para editar */}
-      <TouchableOpacity
-        style={styles.editButton}
-        onPress={() => setModalVisible(true)}
-      >
+      <TouchableOpacity style={styles.editButton} onPress={() => setModalVisible(true)}>
         <Text style={styles.editButtonText}>Editar perfil</Text>
       </TouchableOpacity>
 
-      {/* 🔹 Sección de balance */}
+      {/* Balance e info (igual que antes) */}
       <View style={styles.balanceActionsContainer}>
         <View style={styles.balanceSectionInner}>
           <Text style={styles.balanceLabel}>Available Balance</Text>
@@ -118,7 +211,6 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* 🔹 Sección de info */}
       <View style={styles.infoSection}>
         <Text style={styles.infoItem}>Personal Information</Text>
         <Text style={styles.infoItem}>Security</Text>
@@ -127,31 +219,47 @@ export default function ProfileScreen() {
         <Text style={styles.infoItem}>Account Status</Text>
       </View>
 
-      {/* 🔹 Modal de edición */}
+      {/* Modal de Cámara */}
+      <Modal visible={showCameraModal} animationType="slide" transparent={false}>
+        <View style={styles.cameraModal}>
+          <CameraView
+            ref={cameraRef}
+            style={styles.camera}
+            facing={facing}
+            onCameraReady={() => setIsCameraReady(true)}
+          />
+          <View style={styles.cameraControls}>
+            <TouchableOpacity style={styles.controlButton} onPress={() => setShowCameraModal(false)}>
+              <Text style={styles.controlText}>Cerrar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.controlButton, styles.shotButton]}
+              onPress={takePicture}
+              disabled={!isCameraReady}
+            >
+              <Text style={styles.controlText}>Tomar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.controlButton} onPress={toggleCameraFacing}>
+              <Text style={styles.controlText}>Flip</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de edición */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Editar Perfil</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nombre"
-              value={editName}
-              onChangeText={setEditName}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Username"
-              value={editUsername}
-              onChangeText={setEditUsername}
-            />
+            <TextInput style={styles.input} placeholder="Nombre" value={editName} onChangeText={setEditName} />
+            <TextInput style={styles.input} placeholder="Username" value={editUsername} onChangeText={setEditUsername} />
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
                 <Text style={styles.saveButtonText}>Guardar</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setModalVisible(false)}
-              >
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
               </TouchableOpacity>
             </View>
@@ -161,165 +269,3 @@ export default function ProfileScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  bgContainer: {
-    flex: 1,
-    alignItems: "center",
-    backgroundColor: "#fff",
-    paddingTop: 120,
-  },
-  avatarCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "#252C37",
-    borderWidth: 2,
-    borderColor: "#252C37",
-    marginBottom: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  username: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#252C37",
-    marginBottom: 4,
-  },
-  userId: {
-    fontSize: 14,
-    color: "#888",
-    marginBottom: 4,
-  },
-  logoutIcon: {
-    position: "absolute",
-    top: 60,
-    right: 25,
-    zIndex: 10,
-  },
-  editButton: {
-    marginTop: 16,
-    backgroundColor: "#F8C61E",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-  },
-  editButtonText: {
-    color: "#252C37",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  balanceActionsContainer: {
-    width: "90%",
-    backgroundColor: "#252C37",
-    borderRadius: 16,
-    alignItems: "center",
-    paddingVertical: 22,
-    marginBottom: 32,
-    borderWidth: 1,
-    borderColor: "#1a202c",
-    shadowColor: "#323f52ff",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  balanceSectionInner: {
-    alignItems: "center",
-    marginBottom: 18,
-  },
-  actionsRowCustom: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-  },
-  actionButtonYellow: {
-    flex: 1,
-    backgroundColor: "#F8C61E",
-    marginHorizontal: 6,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    shadowColor: "#FdD700",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-  },
-  actionButtonYellowText: {
-    color: "#252C37",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  balanceLabel: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  balanceValue: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "bold",
-  },
-  infoSection: {
-    width: "90%",
-    backgroundColor: "#f4f4f4",
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  infoItem: {
-    fontSize: 16,
-    color: "#252C37",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 15,
-  },
-  saveButton: {
-    backgroundColor: "#F8C61E",
-    padding: 12,
-    borderRadius: 8,
-    flex: 1,
-    marginRight: 8,
-    alignItems: "center",
-  },
-  saveButtonText: {
-    fontWeight: "bold",
-    color: "#252C37",
-  },
-  cancelButton: {
-    backgroundColor: "#ccc",
-    padding: 12,
-    borderRadius: 8,
-    flex: 1,
-    marginLeft: 8,
-    alignItems: "center",
-  },
-  cancelButtonText: {
-    fontWeight: "bold",
-    color: "#252C37",
-  },
-});
