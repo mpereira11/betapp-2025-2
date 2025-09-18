@@ -5,7 +5,7 @@ interface AuthContextProps {
   user: any;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name: string, username: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -47,8 +47,8 @@ export const AuthProvider = ({ children }: any) => {
     setUser(data.user);
   };
 
-  // 🔹 Registro
-  const register = async (email: string, password: string) => {
+  // AuthContext.tsx
+  const register = async (email: string, password: string, name: string, username: string) => {
     setIsLoading(true);
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -59,9 +59,20 @@ export const AuthProvider = ({ children }: any) => {
     if (error) throw new Error(error.message);
     setUser(data.user);
 
-    // Si quieres guardar el perfil en tu tabla personalizada "profiles"
-    // await supabase.from("profiles").insert({ id: data.user.id, email });
+    // Guardar perfil en la tabla "profiles"
+    if (data.user) {
+      const { error: profileError } = await supabase.from("profiles").insert([
+        {
+          id: data.user.id,   // id del auth user
+          name,
+          username,
+          email,
+        },
+      ]);
+      if (profileError) throw new Error(profileError.message);
+    }
   };
+
 
   // 🔹 Logout
   const logout = async () => {

@@ -8,6 +8,8 @@ import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "reac
 export default function RegisterScreen() {
   const router = useRouter();
   const { register, isLoading } = useContext(AuthContext);
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,10 +19,12 @@ export default function RegisterScreen() {
     setError('');
     setConfirmationMsg('');
     try {
-      await register(email, password);
+      await register(email, password, name, username);
       setConfirmationMsg('Registro exitoso. Revisa tu correo para confirmar tu cuenta antes de iniciar sesión.');
       setEmail('');
       setPassword('');
+      setName('');
+      setUsername('');
     } catch (err: any) {
       setError(err.message || 'No se pudo registrar');
     }
@@ -33,6 +37,18 @@ export default function RegisterScreen() {
         style={styles.image}
       />
       <Text style={styles.title}>Create Account</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Name..."
+        value={name}
+        onChangeText={setName}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Username..."
+        value={username}
+        onChangeText={setUsername}
+      />
       <TextInput
         style={styles.input}
         placeholder="Email..."
