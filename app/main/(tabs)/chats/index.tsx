@@ -1,6 +1,7 @@
 // app/main/(tabs)/chats/index.tsx
 import { AuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/utils/supabase";
+import Entypo from '@expo/vector-icons/Entypo';
 import { useFocusEffect } from "@react-navigation/native";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "expo-router";
@@ -12,6 +13,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -56,6 +58,7 @@ export default function ChatsList() {
   const { user } = useContext(AuthContext);
   const [chats, setChats] = useState<ChatRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
   const router = useRouter();
 
   const fetchChats = async () => {
@@ -110,11 +113,11 @@ export default function ChatsList() {
     setChats(processed);
   };
 
-  // 🔹 Suscripción a mensajes (realtime)
+  // 🔹 Suscripción realtime
   useEffect(() => {
     if (!user) return;
 
-    fetchChats(); // primera carga
+    fetchChats();
 
     const channel: RealtimeChannel = supabase
       .channel("chats-list")
@@ -122,7 +125,6 @@ export default function ChatsList() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         () => {
-          // cuando haya nuevo mensaje refrescamos lista
           fetchChats();
         }
       )
@@ -133,7 +135,7 @@ export default function ChatsList() {
     };
   }, [user]);
 
-  // 🔹 Refrescar cuando regresas al tab
+  // 🔹 Refrescar al volver al tab
   useFocusEffect(
     useCallback(() => {
       fetchChats();
@@ -156,46 +158,94 @@ export default function ChatsList() {
   }
 
   return (
-    <FlatList
-      data={chats}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={{ flexGrow: 1, backgroundColor: "#fff" }}
-      renderItem={({ item }) => {
-        const other = item.other_user;
-        const lastMsg = item.last_message;
+    <View style={{ flex: 1, backgroundColor: "#fff" }}>
+      {/* 🔹 Encabezado */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Chats</Text>
+        <Entypo size={24} name="chat" color="#F8C61E" />
+      </View>
 
-        return (
-          <Pressable
-            onPress={() => handlePressChat(item.id, other?.id)}
-            style={styles.chatRow}
-          >
-            {other?.avatar_url ? (
-              <Image source={{ uri: other.avatar_url }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {other?.name?.[0] ?? other?.username?.[0] ?? "?"}
+      {/* 🔹 Barra de búsqueda */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar conversación..."
+          placeholderTextColor="#999"
+          value={search}
+          onChangeText={setSearch}
+        />
+      </View>
+
+      {/* 🔹 Lista de chats */}
+      <FlatList
+        data={chats}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ paddingTop: 8 }}
+        renderItem={({ item }) => {
+          const other = item.other_user;
+          const lastMsg = item.last_message;
+
+          return (
+            <Pressable
+              onPress={() => handlePressChat(item.id, other?.id)}
+              style={styles.chatRow}
+            >
+              {other?.avatar_url ? (
+                <Image
+                  source={{ uri: other.avatar_url }}
+                  style={styles.avatar}
+                />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarText}>
+                    {other?.name?.[0] ?? other?.username?.[0] ?? "?"}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.chatInfo}>
+                <Text style={styles.name}>
+                  {other?.name ?? other?.username ?? "Usuario"}
+                </Text>
+                <Text style={styles.lastMessage} numberOfLines={1}>
+                  {lastMsg?.text ?? "Sin mensajes aún"}
                 </Text>
               </View>
-            )}
-            <View style={styles.chatInfo}>
-              <Text style={styles.name}>
-                {other?.name ?? other?.username ?? "Usuario"}
-              </Text>
-              <Text style={styles.lastMessage} numberOfLines={1}>
-                {lastMsg?.text ?? "Sin mensajes aún"}
-              </Text>
-            </View>
-            <Text style={styles.date}>{formatDate(lastMsg?.created_at)}</Text>
-          </Pressable>
-        );
-      }}
-    />
+              <Text style={styles.date}>{formatDate(lastMsg?.created_at)}</Text>
+            </Pressable>
+          );
+        }}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: {
+    backgroundColor: "#252C37",
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    height: 100,
+  },
+  headerTitle: { color: "#F8C61E", fontSize: 20, fontWeight: "700" },
+  searchContainer: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+  },
+  searchInput: {
+    backgroundColor: "#f2f2f2",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: "#252C37",
+  },
   chatRow: {
     flexDirection: "row",
     alignItems: "center",
