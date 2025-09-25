@@ -20,17 +20,17 @@ const router = useRouter();
         }}
       />
       <Tabs.Screen
-        name="profile"
-        options={{
-          title: '',
-          tabBarIcon: ({ color }) => <FontAwesome size={28} name="user" color="#F8C61E" />,
-        }}
-      />
-      <Tabs.Screen
         name="chats"
         options={{
           title: '',
           tabBarIcon: ({ color }) => <Entypo size={28} name="chat" color="#F8C61E" />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: '',
+          tabBarIcon: ({ color }) => <FontAwesome size={28} name="user" color="#F8C61E" />,
         }}
       />
     </Tabs>
