@@ -3,6 +3,7 @@ import { supabase } from "@/utils/supabase";
 import Entypo from "@expo/vector-icons/Entypo";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { Alert, Image, Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -28,29 +29,21 @@ export default function ProfileScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
 
-  // Cargar perfil desde Supabase
   useEffect(() => {
+  const fetchProfile = async () => {
     if (!user) return;
-    const loadProfile = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("name, username, email, avatar_url")
-        .eq("id", user.id)
-        .single();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("name, username, avatar_url")
+      .eq("id", user.id)
+      .single();
 
-      if (!error && data) {
-        setProfile(data);
-        setEditName(data.name || "");
-        setEditUsername(data.username || "");
-        if (data.avatar_url) {
-          setPhotoUri(data.avatar_url);
-        }
-      }
-      setLoading(false);
-    };
-    loadProfile();
-  }, [user]);
+    if (!error && data) {
+      setProfile(data);
+    }
+  };
+  fetchProfile();
+}, [user]);
 
   const toggleCameraFacing = () => {
     setFacing((current) => (current === "back" ? "front" : "back"));
@@ -87,7 +80,9 @@ export default function ProfileScreen() {
       }
       
       // Se toma la foto actual y se guarda en la const photo
-      const photo = await cameraRef.current.takePictureAsync?.();
+      const photo = await cameraRef.current.takePictureAsync?.({
+        base64: true, // Para supabase
+      });
       if (!photo) {
         Alert.alert("Error", "No se pudo tomar la foto.");
         return;
@@ -97,6 +92,7 @@ export default function ProfileScreen() {
       const uri = photo.uri ?? (photo.base64 ? `data:image/jpg;base64,${photo.base64}` : null);
       if (uri) {
         setPhotoUri(uri);
+        await uploadAvatarToSupabase(uri); // 🔹 activar la subida
       }
 
       setShowCameraModal(false);
@@ -112,37 +108,99 @@ export default function ProfileScreen() {
   // Ejemplo básico de subida a Supabase (opcional). Ajusta bucket/nombres según tu configuración.
   // NOTA: la API de supabase storage puede devolver estructuras ligeramente distintas según la versión;
   // prueba y ajusta (este helper es un punto de partida).
+  
   const uploadAvatarToSupabase = async (uri: string) => {
-    if (!user) return;
+  if (!user) return;
+
+  try {
+    // 1. Convertir imagen a ArrayBuffer
+    const response = await fetch(uri);
+    const arrayBuffer = await response.arrayBuffer();
+
+    // 2. Crear nombre único (userId-timestamp.ext)
+    const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
+    const filePath = `${user.id}-${Date.now()}.${ext}`;
+
+    // 3. Subir al bucket "avatars"
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(filePath, new Uint8Array(arrayBuffer), {
+        contentType: `image/${ext}`,
+        upsert: false, // 🔹 ahora siempre crea uno nuevo
+      });
+
+    if (uploadError) throw uploadError;
+
+    // 4. Obtener URL pública
+    const { data: publicData } = supabase.storage
+      .from("avatars")
+      .getPublicUrl(filePath);
+
+    const publicUrl = (publicData as any)?.publicUrl;
+
+    if (!publicUrl) throw new Error("No se pudo generar la URL pública del avatar");
+
+    // 5. Actualizar tabla "profiles"
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ avatar_url: publicUrl })
+      .eq("id", user.id);
+
+    if (updateError) {
+      console.error("Error actualizando avatar_url:", updateError.message);
+      Alert.alert("Error", "No se pudo actualizar el perfil en la base de datos.");
+      return;
+    }
+
+    // 6. Actualizar estado en la app
+    setProfile((p: any) => ({ ...p, avatar_url: publicUrl }));
+
+    console.log("Avatar actualizado correctamente:", publicUrl);
+
+  } catch (err) {
+    console.error("uploadAvatarToSupabase error:", err);
+    Alert.alert("Error", "No se pudo subir la imagen al servidor.");
+  }
+};
+
+
+
+  
+    // Galeria
+    const pickImageFromGallery = async () => {
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const ext = uri.split(".").pop()?.split("?")[0] ?? "jpg";
-      const filePath = `avatars/${user.id}.${ext}`;
-
-      const { data, error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, blob, { upsert: true });
-
-      if (uploadError) {
-        console.log("uploadError", uploadError);
-        throw uploadError;
+      // Pedimos permisos primero
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permiso denegado", "Necesitamos acceso a la galería para seleccionar imágenes.");
+        return;
       }
+  
+      // Abrimos la galería
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true, // permite recortar
+        aspect: [1, 1],      // cuadrado (ideal para avatar)
+        quality: 0.8,
+      });
 
-      // Obtener URL pública (estructura puede variar)
-      const { data: publicData } = supabase.storage.from("avatars").getPublicUrl(filePath);
-      const publicUrl = (publicData as any)?.publicUrl ?? (publicData as any)?.publicURL ?? null;
+      if (!result.canceled && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        setPhotoUri(uri);
+        await uploadAvatarToSupabase(uri);
 
-      if (publicUrl) {
-        // Actualizar profile
-        await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", user.id);
-        setProfile((p: any) => ({ ...p, avatar_url: publicUrl }));
+        // Opcional: subir a Supabase
+        // await uploadAvatarToSupabase(uri);
+
+        // Cerramos el modal de cámara
+        setShowCameraModal(false);
       }
     } catch (err) {
-      console.log("uploadAvatarToSupabase error:", err);
-      Alert.alert("Error", "No se pudo subir la imagen al servidor.");
+      console.log("pickImageFromGallery error:", err);
+      Alert.alert("Error", "No se pudo abrir la galería.");
     }
   };
+
 
   // Guardar cambios en el modal de perfil
   const handleSave = async () => {
@@ -175,7 +233,8 @@ export default function ProfileScreen() {
       {/* Avatar: ahora es TouchableOpacity */}
       <TouchableOpacity style={styles.avatarCircle} onPress={openCamera} activeOpacity={0.8}>
         {photoUri ? ( // Si hay una foto guardada se usa su uri para ponerla como imagen, si no, el icono por defecto
-          <Image source={{ uri: photoUri }} style={styles.avatarImage} />
+          <Image source={{ uri: profile.avatar_url }}   style={styles.avatarImage} />
+          
         ) : (
           <FontAwesome size={36} name="user" color="#F8C61E" />
         )}
@@ -243,6 +302,10 @@ export default function ProfileScreen() {
 
             <TouchableOpacity style={styles.controlButton} onPress={toggleCameraFacing}>
               <Text style={styles.controlText}>Flip</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.controlButton} onPress={pickImageFromGallery}>
+              <Text style={styles.controlText}>Galería</Text>
             </TouchableOpacity>
           </View>
         </View>

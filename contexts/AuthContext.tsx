@@ -67,6 +67,7 @@ export const AuthProvider = ({ children }: any) => {
           name,
           username,
           email,
+          avatar_url: null, // inicialmente vacío
         },
       ]);
       if (profileError) throw new Error(profileError.message);

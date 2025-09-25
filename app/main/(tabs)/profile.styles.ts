@@ -24,6 +24,7 @@ export const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
+    resizeMode: "cover",
   },
   username: {
     fontSize: 22,
