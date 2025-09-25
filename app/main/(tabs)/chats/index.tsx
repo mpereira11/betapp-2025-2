@@ -1,131 +1,221 @@
 // app/main/(tabs)/chats/index.tsx
 import { AuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/utils/supabase";
+import { useFocusEffect } from "@react-navigation/native";
+import { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "expo-router";
-import React, { useContext, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useContext, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-type Profile = {
+type ChatRow = {
   id: string;
-  name?: string | null;
-  username?: string | null;
-  avatar_url?: string | null;
+  user_id: string;
+  user_id2: string;
+  other_user: {
+    id: string;
+    name: string | null;
+    username: string | null;
+    avatar_url: string | null;
+  } | null;
+  last_message: {
+    id: string;
+    text: string;
+    created_at: string;
+  } | null;
 };
 
-export default function Users() {
+function formatDate(dateStr?: string) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  const today = new Date();
+
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+
+  const msgMidnight = new Date(d);
+  msgMidnight.setHours(0, 0, 0, 0);
+
+  const diffDays = Math.floor(
+    (todayMidnight.getTime() - msgMidnight.getTime()) / 86400000
+  );
+
+  if (diffDays === 0) return "Hoy";
+  if (diffDays === 1) return "Ayer";
+  return d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
+}
+
+export default function ChatsList() {
   const { user } = useContext(AuthContext);
-  const [users, setUsers] = useState<Profile[]>([]);
+  const [chats, setChats] = useState<ChatRow[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchProfiles = async () => {
-      if (!user) return;
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, name, username, avatar_url")
-        .neq("id", user.id)
-        .order("name", { ascending: true });
-      setLoading(false);
-      if (error) {
-        console.error("Error fetching profiles:", error);
-        return;
-      }
-      setUsers(data ?? []);
-    };
-    fetchProfiles();
-  }, [user]);
+  const fetchChats = async () => {
+    if (!user) return;
 
-  // Busca chat entre me y other — si no existe crea uno. Retorna chatId
-  const getOrCreateChat = async (otherId: string) => {
-    if (!user) throw new Error("Not authenticated");
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("chats_with_last_message")
+      .select("*")
+      .or(`user_id.eq.${user.id},user_id2.eq.${user.id}`)
+      .order("last_message_created_at", { ascending: false });
 
-    // Primera: buscar chat donde (user_id = me and user_id2 = other) OR swapped
-    const { data: existingChats, error: selectError } = await supabase
-      .from("chats")
-      .select("id, user_id, user_id2")
-      .or(`and(user_id.eq.${user.id},user_id2.eq.${otherId}),and(user_id.eq.${otherId},user_id2.eq.${user.id})`)
-      .limit(1);
-
-    if (selectError) {
-      console.error("Error querying chats:", selectError);
-      throw selectError;
+    setLoading(false);
+    if (error) {
+      console.error("Error fetching chats:", error);
+      return;
     }
 
-    if (existingChats && existingChats.length > 0) {
-      return existingChats[0].id;
-    }
+    const processed: ChatRow[] = (data ?? []).map((c: any) => {
+      const isUser1 = c.u1_id === user.id;
+      const other_user = isUser1
+        ? {
+            id: c.u2_id,
+            name: c.u2_name,
+            username: c.u2_username,
+            avatar_url: c.u2_avatar_url,
+          }
+        : {
+            id: c.u1_id,
+            name: c.u1_name,
+            username: c.u1_username,
+            avatar_url: c.u1_avatar_url,
+          };
 
-    // No existe: crear uno
-    const { data: newChat, error: insertError } = await supabase
-      .from("chats")
-      .insert([{ user_id: user.id, user_id2: otherId }])
-      .select()
-      .single();
+      const last_message = c.last_message_id
+        ? {
+            id: c.last_message_id,
+            text: c.last_message_text,
+            created_at: c.last_message_created_at,
+          }
+        : null;
 
-    if (insertError) {
-      console.error("Error creating chat:", insertError);
-      throw insertError;
-    }
-    return newChat.id;
+      return {
+        id: c.id,
+        user_id: c.user_id,
+        user_id2: c.user_id2,
+        other_user,
+        last_message,
+      };
+    });
+
+    setChats(processed);
   };
 
-  const handlePressUser = async (otherId: string) => {
-    try {
-      const chatId = await getOrCreateChat(otherId);
-      // Navegar al chat, pasando chatId y otherId como params
-      router.push({
-        pathname: "/main/chats/chat",
-        params: { chatId, otherId },
-      } as any); // cast para TS si es necesario
-    } catch (e) {
-      console.error(e);
-    }
+  // 🔹 Suscripción a mensajes (realtime)
+  useEffect(() => {
+    if (!user) return;
+
+    fetchChats(); // primera carga
+
+    const channel: RealtimeChannel = supabase
+      .channel("chats-list")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        () => {
+          // cuando haya nuevo mensaje refrescamos lista
+          fetchChats();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  // 🔹 Refrescar cuando regresas al tab
+  useFocusEffect(
+    useCallback(() => {
+      fetchChats();
+    }, [user])
+  );
+
+  const handlePressChat = (chatId: string, otherId?: string) => {
+    router.push({
+      pathname: "/main/chats/chat",
+      params: { chatId, otherId },
+    } as any);
   };
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <View style={styles.center}>
         <ActivityIndicator />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {users.map((u) => (
-        <Pressable
-          key={u.id}
-          onPress={() => handlePressUser(u.id)}
-          style={styles.button}
-        >
-          <Text style={styles.text}>{u.name ?? u.username ?? "Usuario"}</Text>
-        </Pressable>
-      ))}
-    </View>
+    <FlatList
+      data={chats}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={{ flexGrow: 1, backgroundColor: "#fff" }}
+      renderItem={({ item }) => {
+        const other = item.other_user;
+        const lastMsg = item.last_message;
+
+        return (
+          <Pressable
+            onPress={() => handlePressChat(item.id, other?.id)}
+            style={styles.chatRow}
+          >
+            {other?.avatar_url ? (
+              <Image source={{ uri: other.avatar_url }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarText}>
+                  {other?.name?.[0] ?? other?.username?.[0] ?? "?"}
+                </Text>
+              </View>
+            )}
+            <View style={styles.chatInfo}>
+              <Text style={styles.name}>
+                {other?.name ?? other?.username ?? "Usuario"}
+              </Text>
+              <Text style={styles.lastMessage} numberOfLines={1}>
+                {lastMsg?.text ?? "Sin mensajes aún"}
+              </Text>
+            </View>
+            <Text style={styles.date}>{formatDate(lastMsg?.created_at)}</Text>
+          </Pressable>
+        );
+      }}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  chatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+  },
+  avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  avatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#F8C61E",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#fff",
-    paddingHorizontal: 16,
+    marginRight: 12,
   },
-  button: {
-    padding: 15,
-    marginVertical: 10,
-    backgroundColor: "#F8C61E",
-    borderRadius: 10,
-    width: 260,
-    alignItems: "center",
-  },
-  text: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#252C37",
-  },
+  avatarText: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  chatInfo: { flex: 1 },
+  name: { fontSize: 16, fontWeight: "600", marginBottom: 2 },
+  lastMessage: { fontSize: 14, color: "#666" },
+  date: { fontSize: 12, color: "#999", marginLeft: 8 },
 });
