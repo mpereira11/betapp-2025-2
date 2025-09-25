@@ -1,15 +1,17 @@
-// app/main/(tabs)/chats/index.tsx
 import { AuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/utils/supabase";
-import Entypo from '@expo/vector-icons/Entypo';
+import Entypo from "@expo/vector-icons/Entypo";
 import { useFocusEffect } from "@react-navigation/native";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "expo-router";
 import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Button,
   FlatList,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -60,6 +62,10 @@ export default function ChatsList() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const router = useRouter();
+
+  // 🔹 estado para modal de nueva conversación
+  const [modalVisible, setModalVisible] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("");
 
   const fetchChats = async () => {
     if (!user) return;
@@ -116,7 +122,6 @@ export default function ChatsList() {
   // 🔹 Suscripción realtime
   useEffect(() => {
     if (!user) return;
-
     fetchChats();
 
     const channel: RealtimeChannel = supabase
@@ -149,6 +154,65 @@ export default function ChatsList() {
     } as any);
   };
 
+  // 🔹 Crear nueva conversación
+  const handleCreateChat = async () => {
+    if (!usernameInput.trim() || !user) return;
+
+    // buscar perfil por username
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("id, username")
+      .eq("username", usernameInput.trim())
+      .single();
+
+    if (error || !profile) {
+      Alert.alert("Error", "Usuario no encontrado");
+      return;
+    }
+
+    if (profile.id === user.id) {
+      Alert.alert("Error", "No puedes chatear contigo mismo");
+      return;
+    }
+
+    // verificar si ya existe chat
+    const { data: existing } = await supabase
+      .from("chats")
+      .select("id")
+      .or(
+        `and(user_id.eq.${user.id},user_id2.eq.${profile.id}),and(user_id.eq.${profile.id},user_id2.eq.${user.id})`
+      )
+      .limit(1);
+
+    let chatId: string;
+    if (existing && existing.length > 0) {
+      chatId = existing[0].id;
+    } else {
+      // crear chat nuevo
+      const { data: newChat, error: insertError } = await supabase
+        .from("chats")
+        .insert([{ user_id: user.id, user_id2: profile.id }])
+        .select()
+        .single();
+
+      if (insertError || !newChat) {
+        Alert.alert("Error", "No se pudo crear el chat");
+        return;
+      }
+      chatId = newChat.id;
+    }
+
+    setModalVisible(false);
+    setUsernameInput("");
+    fetchChats();
+
+    // navegar al nuevo chat
+    router.push({
+      pathname: "/main/chats/chat",
+      params: { chatId, otherId: profile.id },
+    } as any);
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -162,10 +226,12 @@ export default function ChatsList() {
       {/* 🔹 Encabezado */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Chats</Text>
-        <Entypo size={24} name="chat" color="#F8C61E" />
+        <Pressable onPress={() => setModalVisible(true)}>
+          <Entypo size={26} name="chat" color="#F8C61E" />
+        </Pressable>
       </View>
 
-      {/* 🔹 Barra de búsqueda */}
+      {/* 🔹 Barra de búsqueda (solo visual aún) */}
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
@@ -215,6 +281,27 @@ export default function ChatsList() {
           );
         }}
       />
+
+      {/* 🔹 Modal de nueva conversación */}
+      <Modal visible={modalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Nueva conversación</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Username del usuario"
+              value={usernameInput}
+              onChangeText={setUsernameInput}
+            />
+            <Button title="Crear chat" onPress={handleCreateChat} />
+            <Button
+              title="Cancelar"
+              color="red"
+              onPress={() => setModalVisible(false)}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -268,4 +355,26 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: "600", marginBottom: 2 },
   lastMessage: { fontSize: 14, color: "#666" },
   date: { fontSize: 12, color: "#999", marginLeft: 8 },
+
+  // modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 20,
+    width: "80%",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 12 },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
 });
