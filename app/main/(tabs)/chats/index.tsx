@@ -5,19 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "expo-router";
 import React, { useCallback, useContext, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Button,
-  FlatList,
-  Image,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Button, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 type ChatRow = {
   id: string;
