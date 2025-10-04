@@ -5,7 +5,7 @@ interface AuthContextProps {
   user: any;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, username: string) => Promise<void>;
+  register: (email: string, password: string, name: string, username: string, role: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }: any) => {
   };
 
   // AuthContext.tsx
-  const register = async (email: string, password: string, name: string, username: string) => {
+  const register = async (email: string, password: string, name: string, username: string, role: string) => {
     setIsLoading(true);
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -67,7 +67,8 @@ export const AuthProvider = ({ children }: any) => {
           name,
           username,
           email,
-          avatar_url: null, // inicialmente vacío
+          avatar_url: null, // inicialmente vacío,
+          role,
         },
       ]);
       if (profileError) throw new Error(profileError.message);
