@@ -1,17 +1,19 @@
 // app/main/(tabs)/chats/chat.tsx
 import { AuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/utils/supabase";
-import { useLocalSearchParams } from "expo-router";
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import {
-    FlatList,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  FlatList,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type Message = {
@@ -23,6 +25,13 @@ type Message = {
   chat_id: string;
 };
 
+type Profile = {
+  id: string;
+  name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+};
+
 export default function ChatScreen() {
   const params = useLocalSearchParams<{ chatId: string; otherId?: string }>();
   const chatId = params.chatId;
@@ -31,9 +40,26 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
+  const [otherUser, setOtherUser] = useState<Profile | null>(null);
   const channelRef = useRef<any>(null);
   const flatRef = useRef<FlatList>(null);
+  const router = useRouter();
 
+  // 🔹 Obtener info del otro usuario
+  useEffect(() => {
+    if (!otherId) return;
+    const fetchOther = async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, username, avatar_url")
+        .eq("id", otherId)
+        .single();
+      if (!error && data) setOtherUser(data);
+    };
+    fetchOther();
+  }, [otherId]);
+
+  // 🔹 Cargar mensajes y suscripción realtime
   useEffect(() => {
     if (!chatId) return;
 
@@ -56,8 +82,6 @@ export default function ChatScreen() {
 
     fetchMessages();
 
-    // Subscripción en tiempo real para nuevos mensajes en este chat
-    // Usamos supabase.channel + postgres_changes
     const channel = supabase
       .channel(`public:messages:chat_id=${chatId}`)
       .on(
@@ -66,58 +90,43 @@ export default function ChatScreen() {
         (payload) => {
           const newMsg = payload.new as Message;
           setMessages((prev) => [...prev, newMsg]);
-          // scroll to end after small timeout
           setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
         }
       )
-      .subscribe((status) => {
-        // console.log("channel status:", status);
-      });
+      .subscribe();
 
     channelRef.current = channel;
 
     return () => {
       isMounted = false;
       try {
-        // unsubscribe
-        if (channelRef.current) {
-          supabase.removeChannel(channelRef.current);
-        }
-      } catch (e) {
+        if (channelRef.current) supabase.removeChannel(channelRef.current);
+      } catch {
         // ignore
       }
     };
   }, [chatId]);
 
   const sendMessage = async () => {
-  if (!text.trim() || !chatId || !user) return;
-  const payload = {
-    text: text.trim(),
-    sent_by: user.id,
-    chat_id: chatId,
-    media: null,
+    if (!text.trim() || !chatId || !user) return;
+    const payload = {
+      text: text.trim(),
+      sent_by: user.id,
+      chat_id: chatId,
+      media: null,
+    };
+
+    const { data, error } = await supabase.from("messages").insert([payload]).select().single();
+
+    if (error) {
+      console.error("Error inserting message:", error);
+      return;
+    }
+
+    setText("");
+    setMessages((prev) => [...prev, data as Message]);
+    setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
   };
-
-  const { data, error } = await supabase
-    .from("messages")
-    .insert([payload])
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Error inserting message:", error);
-    return;
-  }
-
-  setText("");
-
-  // 👇 Local echo: agregamos el mensaje al estado inmediatamente
-  setMessages((prev) => [...prev, data as Message]);
-
-  // Scroll al final
-  setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
-};
-
 
   const renderItem = ({ item }: { item: Message }) => {
     const mine = item.sent_by === user?.id;
@@ -133,13 +142,30 @@ export default function ChatScreen() {
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={10}
     >
+      {/* 🔹 Header personalizado */}
       <View style={styles.header}>
-        <Text style={styles.headerText}>Chat</Text>
-        <Text style={styles.subHeaderText}>{otherId ? `Con ${otherId}` : ""}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <MaterialIcons name="arrow-back-ios" size={24} color="#F8C61E" />
+        </TouchableOpacity>
+
+        {otherUser?.avatar_url ? (
+          <Image source={{ uri: otherUser.avatar_url }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarInitial}>
+              {otherUser?.name?.[0] ?? otherUser?.username?.[0] ?? "?"}
+            </Text>
+          </View>
+        )}
+
+        <Text style={styles.usernameText}>
+          {otherUser?.name ?? otherUser?.username ?? "Usuario"}
+        </Text>
       </View>
 
+      {/* 🔹 Lista de mensajes */}
       <FlatList
         ref={flatRef}
         data={messages}
@@ -149,6 +175,7 @@ export default function ChatScreen() {
         onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: true })}
       />
 
+      {/* 🔹 Input de mensaje */}
       <View style={styles.inputRow}>
         <TextInput
           placeholder="Escribe un mensaje..."
@@ -166,9 +193,34 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#fff" },
-  header: { padding: 12, borderBottomWidth: 1, borderColor: "#eee" },
-  headerText: { fontSize: 18, fontWeight: "700", textAlign: "center" },
-  subHeaderText: { fontSize: 12, textAlign: "center", color: "#666" },
+
+  // 🔹 HEADER NUEVO
+  header: {
+    backgroundColor: "#252C37",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 60,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+  },
+  backButton: { marginRight: 10 },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 19,
+    marginRight: 10,
+  },
+  avatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 19,
+    backgroundColor: "#F8C61E",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  avatarInitial: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  usernameText: { color: "#F8C61E", fontSize: 20, fontWeight: "600" },
 
   messagesList: { paddingHorizontal: 12, paddingVertical: 8, flexGrow: 1 },
 
@@ -186,9 +238,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#eee",
     alignSelf: "flex-start",
   },
-  messageText: {
-    fontSize: 16,
-  },
+  messageText: { fontSize: 16 },
   timeText: {
     fontSize: 10,
     color: "#333",

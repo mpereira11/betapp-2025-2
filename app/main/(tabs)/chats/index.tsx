@@ -1,10 +1,10 @@
 import { AuthContext } from "@/contexts/AuthContext";
 import { supabase } from "@/utils/supabase";
-import Entypo from "@expo/vector-icons/Entypo";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFocusEffect } from "@react-navigation/native";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "expo-router";
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Button, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 type ChatRow = {
@@ -146,7 +146,6 @@ export default function ChatsList() {
   const handleCreateChat = async () => {
     if (!usernameInput.trim() || !user) return;
 
-    // buscar perfil por username
     const { data: profile, error } = await supabase
       .from("profiles")
       .select("id, username")
@@ -163,7 +162,6 @@ export default function ChatsList() {
       return;
     }
 
-    // verificar si ya existe chat
     const { data: existing } = await supabase
       .from("chats")
       .select("id")
@@ -176,7 +174,6 @@ export default function ChatsList() {
     if (existing && existing.length > 0) {
       chatId = existing[0].id;
     } else {
-      // crear chat nuevo
       const { data: newChat, error: insertError } = await supabase
         .from("chats")
         .insert([{ user_id: user.id, user_id2: profile.id }])
@@ -194,12 +191,22 @@ export default function ChatsList() {
     setUsernameInput("");
     fetchChats();
 
-    // navegar al nuevo chat
     router.push({
       pathname: "/main/chats/chat",
       params: { chatId, otherId: profile.id },
     } as any);
   };
+
+  // 🔹 Filtrar chats según búsqueda
+  const filteredChats = useMemo(() => {
+    if (!search.trim()) return chats;
+    const lower = search.toLowerCase();
+    return chats.filter((c) => {
+      const name = c.other_user?.name?.toLowerCase() || "";
+      const username = c.other_user?.username?.toLowerCase() || "";
+      return name.includes(lower) || username.includes(lower);
+    });
+  }, [search, chats]);
 
   if (loading) {
     return (
@@ -215,11 +222,11 @@ export default function ChatsList() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Chats</Text>
         <Pressable onPress={() => setModalVisible(true)}>
-          <Entypo size={26} name="chat" color="#F8C61E" />
+          <MaterialIcons name="add-circle" size={24} color="#F8C61E" />
         </Pressable>
       </View>
 
-      {/* 🔹 Barra de búsqueda (solo visual aún) */}
+      {/* 🔹 Barra de búsqueda funcional */}
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
@@ -230,9 +237,9 @@ export default function ChatsList() {
         />
       </View>
 
-      {/* 🔹 Lista de chats */}
+      {/* 🔹 Lista de chats (filtrada) */}
       <FlatList
-        data={chats}
+        data={filteredChats}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingTop: 8 }}
         renderItem={({ item }) => {
@@ -268,6 +275,11 @@ export default function ChatsList() {
             </Pressable>
           );
         }}
+        ListEmptyComponent={
+          <View style={{ padding: 20, alignItems: "center" }}>
+            <Text style={{ color: "#777" }}>No se encontraron chats</Text>
+          </View>
+        }
       />
 
       {/* 🔹 Modal de nueva conversación */}
@@ -328,23 +340,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#eee",
   },
-  avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  avatar: { width: 54, height: 54, borderRadius: 24, marginRight: 12 },
   avatarPlaceholder: {
-    width: 48,
-    height: 48,
+    width: 54,
+    height: 54,
     borderRadius: 24,
     backgroundColor: "#F8C61E",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
   },
-  avatarText: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  avatarText: { color: "#fff", fontSize: 20, fontWeight: "700" },
   chatInfo: { flex: 1 },
-  name: { fontSize: 16, fontWeight: "600", marginBottom: 2 },
+  name: { fontSize: 18, fontWeight: "600", marginBottom: 2 },
   lastMessage: { fontSize: 14, color: "#666" },
   date: { fontSize: 12, color: "#999", marginLeft: 8 },
-
-  // modal
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.3)",
