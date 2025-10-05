@@ -1,6 +1,6 @@
 import Entypo from "@expo/vector-icons/Entypo";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs, useRouter } from "expo-router";
 
 export default function TabLayout() {
@@ -37,11 +37,7 @@ export default function TabLayout() {
         options={{
           title: "",
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons
-              size={28}
-              name="trophy-outline"
-              color="#F8C61E"
-            />
+            <FontAwesome name="trophy" size={28} color="#F8C61E" />
           ),
         }}
       />
@@ -50,7 +46,7 @@ export default function TabLayout() {
         options={{
           title: "",
           tabBarIcon: ({ color }) => (
-            <FontAwesome size={28} name="credit-card" color="#F8C61E" />
+            <Ionicons name="wallet" size={28} color="#F8C61E" />
           ),
         }}
       />
